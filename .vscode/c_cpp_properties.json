@@ -1,0 +1,35 @@
+{
+    "configurations": [
+        {
+            "name": "Linux Raspi",
+            "includePath": [
+                "${workspaceFolder}/**",
+
+                "/usr/src/linux-raspi-headers-5.4.0-1052/arch/arm64/include",
+                "/usr/src/linux-raspi-headers-5.4.0-1052/include",
+                "/usr/src/linux-raspi-headers-5.4.0-1052/arch/arm64/include/uapi",
+                "/usr/src/linux-raspi-headers-5.4.0-1052/include/uapi",
+                "/usr/src/linux-raspi-headers-5.4.0-1052/ubuntu/include",
+                "/usr/src/linux-headers-5.4.0-1052-raspi/arch/arm64/include/generated",
+                "/usr/src/linux-headers-5.4.0-1052-raspi/include",
+                "/usr/src/linux-headers-5.4.0-1052-raspi/include/generated/uapi",
+                "/usr/include/aarch64-linux-gnu/",
+                "/usr/lib/gcc/aarch64-linux-gnu/9/include"
+            ],
+            "defines": [
+                "__KERNEL__",
+                "MODULE"
+            ],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "linux-gcc-arm64",
+            "compilerArgs": [
+                "-nostdinc"//,
+                //"-include","/usr/src/linux-raspi-headers-5.4.0-1052/include/linux/kconfig.h",
+                //"-include","/usr/src/linux-raspi-headers-5.4.0-1052/include/linux/compiler_types.h"
+            ]
+        }
+    ],
+    "version": 4
+}
