@@ -132,6 +132,8 @@ static int i2cdev_check(struct device *dev, void *addrp) {
 static int dev_print_name(struct device *dev, void *data) {
     struct i2c_adapter *adapter;
     struct i2c_client *client;
+    const char write_byte[] = { 0x01 };
+    //const char write_byte[] = { 0xfe };
 
     if (i2c_verify_adapter(dev)) {
         printk("  Found an adapter\n");
@@ -144,11 +146,18 @@ static int dev_print_name(struct device *dev, void *data) {
         client->adapter = adapter;
 
         // Assign client device address
-        if (i2c_check_addr_busy(adapter, PCF8574_Address)) { return -EBUSY; }
+        if (i2c_check_addr_busy(adapter, PCF8574_Address)) {
+            kfree(client);
+            return -EBUSY;
+        }
+
         client->addr = PCF8574_Address;
 
         // Send a message!
         printk("SEND A MESSAGE\n");
+        i2c_master_send(client, write_byte, 1);
+
+
         kfree(client);
     }
     return 0;

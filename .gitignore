@@ -5,3 +5,4 @@ Module.symvers
 modules.order
 *.o
 *.ko
+.vscode/settings.json
