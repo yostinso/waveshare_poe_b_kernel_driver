@@ -7,7 +7,8 @@ struct waveshare_poe_b_cooling {
     unsigned long throttle_state;
 };
 
-void register_hat_fan(void);
-void unregister_hat_fan(void);
+static void register_hat_fan(void);
+static void unregister_hat_fan(void);
+struct resource* get_i2c_mem_range(void);
 
 #endif
