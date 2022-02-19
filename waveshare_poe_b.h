@@ -16,9 +16,13 @@ static int i2cdev_check_mux_parents(struct i2c_adapter *adapter, int addr);
 static int i2cdev_check_mux_children(struct device *dev, void *addrp);
 static int i2cdev_check(struct device *dev, void *addrp);
 
+static int set_i2c_addr(struct i2c_client *client, unsigned short addr);
 static int set_i2c_byte(struct i2c_client *client, char byte);
+static char get_i2c_byte(struct i2c_client *client);
 
 static void register_hat_fan(void);
 static void unregister_hat_fan(void);
+
+static struct i2c_client *client;
 
 #endif

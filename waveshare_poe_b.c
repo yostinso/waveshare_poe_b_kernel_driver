@@ -41,7 +41,16 @@ static int set_cur_state(struct thermal_cooling_device *dev, unsigned long state
     mutex_lock(&hat->conf_mutex);
     hat->throttle_state = state;
     mutex_unlock(&hat->conf_mutex);
-    // TODO: I2C
+    if (client) {
+        if (client->addr != PCF8574_Address)
+            set_i2c_addr(client, PCF8574_Address);
+
+        if (state) {
+            set_i2c_byte(client, 0xfe);
+        } else {
+            set_i2c_byte(client, 0x01);
+        }
+    }
     return 0;
 }
 
@@ -118,14 +127,16 @@ static int setup_i2c_client(struct i2c_adapter *adapter, struct i2c_client **cli
     snprintf(c->name, I2C_NAME_SIZE, "i2c-dev %d", adapter->nr);
     c->adapter = adapter;
 
-    if (i2c_check_addr_busy(adapter, PCF8574_Address)) {
-        kfree(c);
+    *client = c;
+    return 0;
+}
+
+static int set_i2c_addr(struct i2c_client *client, unsigned short addr) {
+    if (i2c_check_addr_busy(client->adapter, addr)) {
         return -EBUSY;
     }
 
-    c->addr = PCF8574_Address;
-
-    *client = c;
+    client->addr = addr;
     return 0;
 }
 
@@ -156,7 +167,13 @@ static int set_i2c_byte(struct i2c_client *client, char byte) {
     // Send a message!
     printk("waveshare_poe_b: Sending message 0x%x to address 0x%x on I2C bus %d\n", byte, client->addr, client->adapter->nr);
     return i2c_master_send(client, write_byte, 1);
+}
 
+static char get_i2c_byte(struct i2c_client *client) {
+    char read_byte[1];
+    i2c_master_recv(client, read_byte, 1);
+
+    return read_byte[0];
 }
 
 static void get_i2c_client(struct i2c_client **client) {
@@ -168,16 +185,20 @@ static void free_i2c_client(struct i2c_client *client) {
 }
 
 
-
-static struct i2c_client *client;
-
 int init_module() {
     printk("waveshare_poe_b: Initializing...\n");
     get_i2c_client(&client);
 
-    set_i2c_byte(client, 0xfe);
 
     register_hat_fan();
+
+    // Get the current fan state
+    if (client) {
+        set_i2c_addr(client, PCF8574_Address);
+
+        devdata.throttle_state = (get_i2c_byte(client) == 0) ? 0 : 1;
+    }
+
     printk("waveshare_poe_b: Initialized with client %p...\n", client);
     return 0;
 }
