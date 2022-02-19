@@ -7,7 +7,6 @@
 #include <linux/i2c.h>
 
 #include "waveshare_poe_b.h"
-#include "bcm_consts.h"
 
 MODULE_AUTHOR("E.O. Stinson <yostinso@gmail.com>");
 MODULE_DESCRIPTION("Waveshare Raspberry Pi 4 PoE Hat B fan and OLED driver");
@@ -65,24 +64,7 @@ static void unregister_hat_fan() {
     thermal_cooling_device_unregister(devdata.cdev);
 }
 
-struct resource* get_i2c_mem_range() {
-    // Find the existing memory mapped by the bmc2835_i2c driver
-    struct resource *res = 0;
-    struct resource *p = &iomem_resource;
-    printk("IOMEM: %s\n", p->name);
-    for (p = p->child; p; p = p->sibling) {
-        if (strncmp(p->name, "fe804000.i2c ", 13) == 0) {
-            res = p;
-            break;
-        }
-    }
-    return res;
-}
-
-static int i2cdev_check_mux_parents(struct i2c_adapter *adapter, int addr);
-static int i2cdev_check_mux_children(struct device *dev, void *addrp);
-static int i2cdev_check(struct device *dev, void *addrp);
-
+/* Busy checks borrowed from i2c-dev.c */
 static int i2c_check_addr_busy(struct i2c_adapter *adapter, unsigned int addr) {
 	struct i2c_adapter *parent = i2c_parent_is_i2c_adapter(adapter);
 	int result = 0;
@@ -128,74 +110,84 @@ static int i2cdev_check(struct device *dev, void *addrp) {
 	return dev->driver ? -EBUSY : 0;
 }
 
+static int setup_i2c_client(struct i2c_adapter *adapter, struct i2c_client **client) {
+    struct i2c_client *c;
+    c = kzalloc(sizeof(*c), GFP_KERNEL);
+    if (!c) { return -ENOMEM; }
 
-static int dev_print_name(struct device *dev, void *data) {
+    snprintf(c->name, I2C_NAME_SIZE, "i2c-dev %d", adapter->nr);
+    c->adapter = adapter;
+
+    if (i2c_check_addr_busy(adapter, PCF8574_Address)) {
+        kfree(c);
+        return -EBUSY;
+    }
+
+    c->addr = PCF8574_Address;
+
+    *client = c;
+    return 0;
+}
+
+static int find_i2c_client(struct device *dev, void *data) {
     struct i2c_adapter *adapter;
     struct i2c_client *client;
-    const char write_byte[] = { 0x01 };
-    //const char write_byte[] = { 0xfe };
-
+    struct i2c_client **client_ptr = data;
+    int res = 0;
+    *client_ptr = NULL;
     if (i2c_verify_adapter(dev)) {
-        printk("  Found an adapter\n");
         adapter = to_i2c_adapter(dev);
-
-        // Allocate an anonymous client
-        client = kzalloc(sizeof(*client), GFP_KERNEL);
-        if (!client) { return -ENOMEM; }
-        snprintf(client->name, I2C_NAME_SIZE, "i2c-dev %d", adapter->nr);
-        client->adapter = adapter;
-
-        // Assign client device address
-        if (i2c_check_addr_busy(adapter, PCF8574_Address)) {
-            kfree(client);
-            return -EBUSY;
+        if (adapter && adapter->nr == I2C_ADAPTER_NR) {
+            printk("waveshare_poe_b: Found I2C adapter %d\n", I2C_ADAPTER_NR);
+            if ((res = setup_i2c_client(adapter, &client)) == 0) {
+                *client_ptr = client;
+                return 1;
+            }
         }
-
-        client->addr = PCF8574_Address;
-
-        // Send a message!
-        printk("SEND A MESSAGE\n");
-        i2c_master_send(client, write_byte, 1);
-
-
-        kfree(client);
     }
     return 0;
 }
 
-static int drv_print_name(struct device_driver *drv, void *data) {
-    struct i2c_driver *driver;
-    struct i2c_client *client, *n;
-    int i = 0;
-    driver = to_i2c_driver(drv);
-    list_for_each_entry_safe(client, n, &driver->clients, detected) {
-        i++;
-    }
-    if (i > 0) {
-        printk("  Driver had %d clients\n", i);
-    }
-    return 0;
+static int set_i2c_byte(struct i2c_client *client, char byte) {
+    const char write_byte[] = { byte };
+
+    if (!client) { return -EINVAL; }
+
+    // Send a message!
+    printk("waveshare_poe_b: Sending message 0x%x to address 0x%x on I2C bus %d\n", byte, client->addr, client->adapter->nr);
+    return i2c_master_send(client, write_byte, 1);
+
 }
 
-static void get_i2c_adapter_name(void) {
-    int level = 1;
-    printk("Iterating devices...\n");
-    bus_for_each_dev(&i2c_bus_type, 0, &level, dev_print_name);
-    printk("Iterating drivers...\n");
-    bus_for_each_drv(&i2c_bus_type, 0, &level, drv_print_name);
+static void get_i2c_client(struct i2c_client **client) {
+    bus_for_each_dev(&i2c_bus_type, 0, client, find_i2c_client);
 }
 
-// TODO: Reimplement bcm driver
+static void free_i2c_client(struct i2c_client *client) {
+    kfree(client);
+}
+
+
+
+static struct i2c_client *client;
 
 int init_module() {
-    printk("------STARTING\n");
-    //get_i2c_mem_range();
-    get_i2c_adapter_name();
+    printk("waveshare_poe_b: Initializing...\n");
+    get_i2c_client(&client);
+
+    set_i2c_byte(client, 0xfe);
+
     register_hat_fan();
-    printk("------DONE\n");
+    printk("waveshare_poe_b: Initialized with client %p...\n", client);
     return 0;
 }
 
 void cleanup_module() {
+    printk("waveshare_poe_b: unloading\n");
+    if (client) {
+        free_i2c_client(client);
+    }
+
     unregister_hat_fan();
+    printk("waveshare_poe_b: done unloading\n");
 }
